@@ -16,7 +16,8 @@ A full-stack clinic management system for dental practices.
 | **Prescriptions** | Quick-add common dental drugs, allergy warning, printable A4 prescription |
 | **Billing** | Invoice completed treatments + custom items, discount, tax/GST, partial payments (cash/UPI/card/…), void, **PDF invoice** |
 | **Inventory** | Items, suppliers, stock in / usage / adjust with movement history, low-stock and expiry alerts |
-| **Reports** | Collections by day and payment method, revenue by procedure and dentist, CSV export |
+| **Expenses** | Every stock-in is logged as a purchase expense (quantity × unit cost, supplier, bill no., paid via); add other spending such as equipment, repairs or lab charges; filter by date, category and type; totals by category and supplier; CSV export |
+| **Reports** | Collections by day and payment method, expenses and net (collected − expenses), revenue by procedure and dentist, CSV export |
 | **Admin** | Staff and roles, price list, clinic settings, audit log of views and changes |
 
 ### Roles
@@ -25,8 +26,8 @@ A full-stack clinic management system for dental practices.
 |---|---|
 | Admin | Everything |
 | Dentist | Patients, dental chart, treatments, prescriptions, own schedule, record stock usage |
-| Receptionist | Patients, appointments, invoices and payments, inventory |
-| Accountant | Invoices, payments, voids, reports |
+| Receptionist | Patients, appointments, invoices and payments, inventory, expenses |
+| Accountant | Invoices, payments, voids, expenses, reports |
 
 ---
 
@@ -99,14 +100,14 @@ dental-erp/
 │       └── modules/                  one router per module
 │           ├── auth, users, patients (+ dental chart)
 │           ├── appointments, procedures, treatments, prescriptions
-│           ├── invoices (+ payments, PDF), inventory (+ suppliers)
+│           ├── invoices (+ payments, PDF), inventory (+ suppliers), expenses
 │           └── reports (dashboard, reports, settings, audit)
 └── client/
     └── src/
         ├── lib/            api client, auth context, hooks, formatters
         ├── components/     UI kit, layout, odontogram, forms, charts
         └── pages/          Dashboard, Patients, PatientDetail, Appointments,
-                            Billing, InvoiceNew, InvoiceDetail, Inventory,
+                            Billing, InvoiceNew, InvoiceDetail, Inventory, Expenses,
                             Procedures, Staff, Reports, Settings, AuditLog
 ```
 
@@ -138,6 +139,7 @@ All routes are under `/api` and need `Authorization: Bearer <token>` except logi
 | `POST /invoices/:id/void` | Void an unpaid invoice |
 | `GET/POST/PUT /inventory` · `POST /inventory/:id/movements` | Items · stock in/out/adjust |
 | `GET/POST/PUT /inventory/suppliers` | Suppliers |
+| `GET /expenses?from=&to=&category=&source=&q=` · `POST/PUT/DELETE /expenses` | Expenses with totals by category, supplier and month · add / edit / delete (manual entries only) |
 | `GET /dashboard` · `GET /reports?from=&to=` | Dashboard stats · reports |
 | `GET/PUT /settings` · `GET /audit` | Clinic settings · audit log |
 | `GET /health` | Health check (no auth) |
@@ -149,6 +151,7 @@ Errors come back as `{ "error": "message", "details": [...] }` with a proper sta
 ## How key things work
 
 - **No double-booking:** `appointments` has an `EXCLUDE USING gist (dentist_id WITH =, tstzrange(start_time, end_time) WITH &&)` constraint (ignoring cancelled / no-show), so two bookings for the same dentist can never overlap, even with simultaneous requests.
+- **Inventory expenses:** receiving stock (`POST /inventory/:id/movements` with `type: in`) writes the stock movement and a linked `expenses` row in the same transaction. Opening stock is not counted as a purchase. Stock-linked expenses can be edited (e.g. if the supplier bill differs) but not deleted; adjust the stock instead.
 - **Billing integrity:** creating an invoice locks the selected treatments (`SELECT … FOR UPDATE`) inside a transaction, so a treatment can't be billed twice. Payments lock the invoice row and can't exceed the balance. Voiding releases treatments for re-billing. Money is stored as `numeric(12,2)`.
 - **Audit trail:** every create/update/delete, patient record view and login is written to `audit_logs`.
 - **Time zone:** "today" and daily reports use the `TIMEZONE` env var (default `Asia/Kolkata`).

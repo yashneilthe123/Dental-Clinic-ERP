@@ -11,6 +11,7 @@ import Billing from './pages/Billing.jsx';
 import InvoiceNew from './pages/InvoiceNew.jsx';
 import InvoiceDetail from './pages/InvoiceDetail.jsx';
 import Inventory from './pages/Inventory.jsx';
+import Expenses from './pages/Expenses.jsx';
 import Procedures from './pages/Procedures.jsx';
 import Staff from './pages/Staff.jsx';
 import Reports from './pages/Reports.jsx';
@@ -53,6 +54,7 @@ export default function App() {
         <Route path="billing/new" element={<RequireRole roles={['receptionist', 'accountant']}><InvoiceNew /></RequireRole>} />
         <Route path="billing/:id" element={<InvoiceDetail />} />
         <Route path="inventory" element={<Inventory />} />
+        <Route path="expenses" element={<RequireRole roles={['receptionist', 'accountant']}><Expenses /></RequireRole>} />
         <Route path="procedures" element={<Procedures />} />
         <Route path="reports" element={<RequireRole roles={['accountant']}><Reports /></RequireRole>} />
         <Route path="staff" element={<RequireRole roles={[]}><Staff /></RequireRole>} />

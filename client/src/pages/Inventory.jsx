@@ -138,12 +138,13 @@ function ItemForm({ item, onClose, onSaved }) {
 
 function MovementForm({ state, onClose, onSaved }) {
   const toast = useToast();
-  const [form, setForm] = useState({ quantity: '', reason: '', unit_cost: '' });
+  const [form, setForm] = useState({ quantity: '', reason: '', unit_cost: '', payment_method: '', bill_number: '' });
   const [busy, setBusy] = useState(false);
   const [last, setLast] = useState(null);
-  if (state !== last) { setLast(state); if (state) setForm({ quantity: '', reason: '', unit_cost: state.item.unit_cost }); }
+  if (state !== last) { setLast(state); if (state) setForm({ quantity: '', reason: '', unit_cost: state.item.unit_cost, payment_method: '', bill_number: '' }); }
   if (!state) return null;
   const { item, type } = state;
+  const purchase = Math.round((Number(form.quantity) || 0) * (Number(form.unit_cost) || 0) * 100) / 100;
 
   const submit = async (e) => {
     e.preventDefault();
@@ -152,8 +153,9 @@ function MovementForm({ state, onClose, onSaved }) {
       await api.post(`/inventory/${item.id}/movements`, {
         type, quantity: Number(form.quantity), reason: form.reason || null,
         ...(type === 'in' && form.unit_cost !== '' ? { unit_cost: Number(form.unit_cost) } : {}),
+        ...(type === 'in' ? { payment_method: form.payment_method || null, bill_number: form.bill_number || null } : {}),
       });
-      toast(type === 'in' ? 'Stock received' : 'Usage recorded');
+      toast(type === 'in' ? (purchase > 0 ? `Stock received · ${money(purchase)} added to expenses` : 'Stock received') : 'Usage recorded');
       onSaved(); onClose();
     } catch (err) { toast(err.message, 'error'); } finally { setBusy(false); }
   };
@@ -166,8 +168,28 @@ function MovementForm({ state, onClose, onSaved }) {
         <Field label={`Quantity (${item.unit}) *`}>
           <Input required autoFocus type="number" min="0.01" step="0.01" max={type === 'out' ? item.quantity : undefined} value={form.quantity} onChange={(e) => setForm({ ...form, quantity: e.target.value })} />
         </Field>
-        {type === 'in' && <Field label="Unit cost (₹)"><Input type="number" min="0" step="0.01" value={form.unit_cost} onChange={(e) => setForm({ ...form, unit_cost: e.target.value })} /></Field>}
-        <Field label={type === 'in' ? 'Reference (bill no., supplier)' : 'Used for'}>
+        {type === 'in' && (
+          <>
+            <Field label="Unit cost (₹)"><Input type="number" min="0" step="0.01" value={form.unit_cost} onChange={(e) => setForm({ ...form, unit_cost: e.target.value })} /></Field>
+            <div className="grid grid-cols-2 gap-3">
+              <Field label="Paid via">
+                <Select value={form.payment_method} onChange={(e) => setForm({ ...form, payment_method: e.target.value })}>
+                  <option value="">Not recorded</option>
+                  <option value="cash">Cash</option><option value="upi">UPI</option><option value="card">Card</option>
+                  <option value="bank_transfer">Bank transfer</option><option value="cheque">Cheque</option>
+                  <option value="credit">On credit (unpaid)</option><option value="other">Other</option>
+                </Select>
+              </Field>
+              <Field label="Supplier bill no."><Input value={form.bill_number} onChange={(e) => setForm({ ...form, bill_number: e.target.value })} /></Field>
+            </div>
+            {purchase > 0 && (
+              <p className="rounded-lg bg-brand-50 px-3 py-2 text-sm text-brand-900">
+                Purchase of <span className="font-semibold">{money(purchase)}</span> will be added to Expenses.
+              </p>
+            )}
+          </>
+        )}
+        <Field label={type === 'in' ? 'Notes' : 'Used for'}>
           <Textarea rows={2} value={form.reason} onChange={(e) => setForm({ ...form, reason: e.target.value })} />
         </Field>
       </form>

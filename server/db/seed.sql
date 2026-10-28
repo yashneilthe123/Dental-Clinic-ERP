@@ -117,3 +117,27 @@ INSERT INTO inventory_items (sku, name, category, unit, quantity, reorder_level,
 
 INSERT INTO stock_movements (item_id, type, quantity, reason, user_id)
 SELECT id, 'in', quantity, 'Opening stock', 1 FROM inventory_items;
+
+-- Expenses: two stock purchases received last month plus some other clinic spending
+WITH m AS (
+  INSERT INTO stock_movements (item_id, type, quantity, reason, user_id, created_at)
+  SELECT id, 'in', q, 'Monthly order', 4, now() - d
+  FROM (VALUES ('GLV-M', 10, interval '20 days'), ('COMP-A2', 4, interval '9 days')) v(sku, q, d)
+  JOIN inventory_items i ON i.sku = v.sku
+  RETURNING id, item_id, quantity, created_at
+)
+INSERT INTO expenses (expense_date, category, description, amount, payment_method, reference, supplier_id, item_id,
+                      quantity, unit_cost, movement_id, source, created_by, created_at)
+SELECT m.created_at::date, i.category, 'Stock purchase: ' || i.name, m.quantity * i.unit_cost, 'upi',
+       'BILL-' || (1040 + m.id), i.supplier_id, i.id, m.quantity, i.unit_cost, m.id, 'stock', 4, m.created_at
+FROM m JOIN inventory_items i ON i.id = m.item_id;
+
+INSERT INTO expenses (expense_date, category, description, amount, payment_method, reference, created_by) VALUES
+  (current_date - 15, 'Repairs & maintenance', 'Dental chair compressor service', 3500, 'cash', 'SRV-118', 4),
+  (current_date - 6,  'Lab charges',           'Crown fabrication - City Dental Lab', 6800, 'bank_transfer', 'CDL-5521', 4),
+  (current_date - 2,  'Sterilisation',         'Autoclave pouches and indicator strips', 1250, 'upi', NULL, 4);
+
+-- Keep each item's movement history summing to its current quantity
+UPDATE stock_movements o SET quantity = o.quantity - p.quantity
+FROM stock_movements p
+WHERE p.item_id = o.item_id AND p.reason = 'Monthly order' AND o.reason = 'Opening stock';

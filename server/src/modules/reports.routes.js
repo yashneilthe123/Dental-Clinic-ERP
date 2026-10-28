@@ -27,7 +27,8 @@ dashboardRouter.get('/', asyncHandler(async (req, res) => {
         (SELECT COALESCE(sum(amount),0) FROM payments WHERE paid_at >= date_trunc('day', now())) AS collected_today,
         (SELECT COALESCE(sum(amount),0) FROM payments WHERE paid_at >= date_trunc('month', now())) AS collected_month,
         (SELECT COALESCE(sum(total - amount_paid),0) FROM invoices WHERE status IN ('unpaid','partial')) AS outstanding,
-        (SELECT count(*)::int FROM inventory_items WHERE is_active AND quantity <= reorder_level) AS low_stock_count
+        (SELECT count(*)::int FROM inventory_items WHERE is_active AND quantity <= reorder_level) AS low_stock_count,
+        (SELECT COALESCE(sum(amount),0) FROM expenses WHERE expense_date >= date_trunc('month', now())) AS expenses_month
     `, dParams),
     query(`
       SELECT a.id, a.start_time, a.end_time, a.status, a.reason, a.patient_id,
@@ -52,6 +53,7 @@ dashboardRouter.get('/', asyncHandler(async (req, res) => {
       WHERE is_active AND quantity <= reorder_level ORDER BY (quantity / NULLIF(reorder_level,0)) NULLS FIRST LIMIT 8`),
   ]);
 
+  if (isDentist) delete stats.rows[0].expenses_month; // clinic spending is for front office / accounts
   res.json({
     stats: stats.rows[0],
     todayAppointments: today.rows,
@@ -75,14 +77,16 @@ reportsRouter.get('/', authorize('accountant'), asyncHandler(async (req, res) =>
   // payments/appointments use [from, to+1 day)
   const range = `>= $1::date AND %s < $2::date + 1`;
 
-  const [summary, daily, byMethod, byProcedure, byDentist, appts] = await Promise.all([
+  const [summary, daily, byMethod, byProcedure, byDentist, appts, expensesByCategory] = await Promise.all([
     query(`
       SELECT
         (SELECT COALESCE(sum(amount),0) FROM payments WHERE paid_at ${range.replace('%s', 'paid_at')}) AS collected,
         (SELECT COALESCE(sum(total),0) FROM invoices WHERE status <> 'void' AND issue_date BETWEEN $1 AND $2) AS billed,
         (SELECT count(*)::int FROM invoices WHERE status <> 'void' AND issue_date BETWEEN $1 AND $2) AS invoice_count,
         (SELECT count(*)::int FROM patients WHERE created_at ${range.replace('%s', 'created_at')}) AS new_patients,
-        (SELECT count(*)::int FROM treatments WHERE status = 'completed' AND performed_at ${range.replace('%s', 'performed_at')}) AS treatments_done
+        (SELECT count(*)::int FROM treatments WHERE status = 'completed' AND performed_at ${range.replace('%s', 'performed_at')}) AS treatments_done,
+        (SELECT COALESCE(sum(amount),0) FROM expenses WHERE expense_date BETWEEN $1 AND $2) AS expenses,
+        (SELECT COALESCE(sum(amount),0) FROM expenses WHERE source = 'stock' AND expense_date BETWEEN $1 AND $2) AS inventory_expenses
     `, p),
     query(`
       SELECT to_char(d, 'YYYY-MM-DD') AS day, COALESCE(sum(py.amount),0) AS amount
@@ -108,12 +112,18 @@ reportsRouter.get('/', authorize('accountant'), asyncHandler(async (req, res) =>
     query(`
       SELECT status, count(*)::int AS count FROM appointments
       WHERE start_time ${range.replace('%s', 'start_time')} GROUP BY status`, p),
+    query(`
+      SELECT category, count(*)::int AS count, sum(amount) AS amount FROM expenses
+      WHERE expense_date BETWEEN $1 AND $2 GROUP BY category ORDER BY amount DESC`, p),
   ]);
+  const s = summary.rows[0];
+  s.net = Math.round((s.collected - s.expenses) * 100) / 100;
 
   res.json({
     from, to,
-    summary: summary.rows[0],
+    summary: s,
     daily: daily.rows,
+    expensesByCategory: expensesByCategory.rows,
     byMethod: byMethod.rows,
     byProcedure: byProcedure.rows,
     byDentist: byDentist.rows,

@@ -19,6 +19,7 @@ import treatmentRoutes from './modules/treatments.routes.js';
 import prescriptionRoutes from './modules/prescriptions.routes.js';
 import invoiceRoutes from './modules/invoices.routes.js';
 import inventoryRoutes from './modules/inventory.routes.js';
+import expenseRoutes from './modules/expenses.routes.js';
 import { dashboardRouter, reportsRouter, settingsRouter, auditRouter } from './modules/reports.routes.js';
 
 export function createApp() {
@@ -52,6 +53,7 @@ export function createApp() {
   api.use('/prescriptions', prescriptionRoutes);
   api.use('/invoices', invoiceRoutes);
   api.use('/inventory', inventoryRoutes);
+  api.use('/expenses', expenseRoutes);
   api.use('/dashboard', dashboardRouter);
   api.use('/reports', reportsRouter);
   api.use('/settings', settingsRouter);

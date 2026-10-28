@@ -23,7 +23,7 @@ async function run() {
   try {
     await client.query('BEGIN');
     if (force) {
-      await client.query(`TRUNCATE audit_logs, stock_movements, inventory_items, suppliers, payments, invoice_items,
+      await client.query(`TRUNCATE audit_logs, expenses, stock_movements, inventory_items, suppliers, payments, invoice_items,
         invoices, prescriptions, treatments, tooth_records, appointments, procedures, patients, users
         RESTART IDENTITY CASCADE`);
       await client.query(`ALTER SEQUENCE patient_code_seq RESTART WITH 1; ALTER SEQUENCE invoice_number_seq RESTART WITH 1`);

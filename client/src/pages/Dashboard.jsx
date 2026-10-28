@@ -31,7 +31,8 @@ export default function Dashboard() {
 
       <div className="grid grid-cols-2 gap-4 lg:grid-cols-4">
         <StatCard label="Appointments today" value={stats.appointments_today} sub={`${stats.total_patients} active patients`} />
-        <StatCard label="Collected today" value={money(stats.collected_today)} sub={`${money(stats.collected_month)} this month`} accent="sky" />
+        <StatCard label="Collected today" value={money(stats.collected_today)} accent="sky"
+          sub={`${money(stats.collected_month)} this month${stats.expenses_month != null ? ` · ${money(stats.expenses_month)} spent` : ''}`} />
         <StatCard label="Outstanding dues" value={money(stats.outstanding)} sub="Unpaid + partial invoices" accent="amber" />
         <StatCard label="New patients" value={stats.new_patients_month} sub={`${stats.low_stock_count} items low on stock`} accent="violet" />
       </div>

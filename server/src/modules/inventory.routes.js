@@ -5,6 +5,7 @@ import { authorize } from '../middleware/auth.js';
 import { validate } from '../middleware/validate.js';
 import { asyncHandler, notFound, badRequest, round2 } from '../utils/http.js';
 import { audit } from '../utils/audit.js';
+import { PAYMENT_METHODS } from './expenses.routes.js';
 
 const router = Router();
 const manage = authorize('receptionist');
@@ -130,6 +131,9 @@ const movementSchema = z.object({
   quantity: z.coerce.number().refine((n) => n !== 0, 'Quantity cannot be zero'),
   reason: z.string().trim().max(300).optional().nullable(),
   unit_cost: z.coerce.number().min(0).optional(), // update cost when receiving stock
+  // Receiving stock also records a purchase expense
+  payment_method: z.enum(PAYMENT_METHODS).optional().nullable().or(z.literal('').transform(() => null)),
+  bill_number: z.string().trim().max(100).optional().nullable(),
 });
 
 // POST /api/inventory/:id/movements  { type: in|out|adjust, quantity }
@@ -147,10 +151,23 @@ router.post('/:id/movements', authorize('receptionist', 'dentist'), validate(mov
       `UPDATE inventory_items SET quantity = $1, unit_cost = COALESCE($2, unit_cost) WHERE id = $3`,
       [next, b.type === 'in' && b.unit_cost !== undefined ? b.unit_cost : null, item.id]
     );
-    await db.query(
-      `INSERT INTO stock_movements (item_id, type, quantity, reason, user_id) VALUES ($1,$2,$3,$4,$5)`,
+    const movement = (await db.query(
+      `INSERT INTO stock_movements (item_id, type, quantity, reason, user_id) VALUES ($1,$2,$3,$4,$5) RETURNING id`,
       [item.id, b.type, b.quantity, b.reason || null, req.user.id]
-    );
+    )).rows[0];
+    if (b.type === 'in') {
+      const unitCost = b.unit_cost ?? item.unit_cost;
+      const amount = round2(b.quantity * unitCost);
+      if (amount > 0) {
+        await db.query(
+          `INSERT INTO expenses (category, description, amount, payment_method, reference, supplier_id, item_id,
+                                 quantity, unit_cost, movement_id, source, notes, created_by)
+           VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,'stock',$11,$12)`,
+          [item.category, `Stock purchase: ${item.name}`, amount, b.payment_method || null, b.bill_number || null,
+            item.supplier_id, item.id, b.quantity, unitCost, movement.id, b.reason || null, req.user.id]
+        );
+      }
+    }
     await audit(req, 'stock_' + b.type, 'inventory_item', item.id, { quantity: b.quantity }, db);
   });
   res.status(201).json((await query(`${ITEM_SELECT} WHERE i.id = $1`, [req.params.id])).rows[0]);

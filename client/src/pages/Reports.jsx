@@ -1,4 +1,5 @@
 import { useState } from 'react';
+import { Link } from 'react-router-dom';
 import { api, qs } from '../lib/api.js';
 import { useApi } from '../lib/hooks.js';
 import { isoDay, money, titleCase } from '../lib/format.js';
@@ -42,8 +43,13 @@ export default function Reports() {
 
       {loading || !data ? <Loading /> : (
         <>
-          <div className="grid grid-cols-2 gap-4 lg:grid-cols-5">
+          <div className="mb-4 grid grid-cols-1 gap-4 sm:grid-cols-3">
             <StatCard label="Collected" value={money(data.summary.collected)} />
+            <StatCard label="Expenses" value={money(data.summary.expenses)}
+              sub={`${money(data.summary.inventory_expenses)} on inventory`} accent="rose" />
+            <StatCard label={data.summary.net < 0 ? 'Net loss' : 'Net (collected − expenses)'} value={money(data.summary.net)} accent={data.summary.net < 0 ? 'rose' : 'violet'} />
+          </div>
+          <div className="grid grid-cols-2 gap-4 lg:grid-cols-4">
             <StatCard label="Billed" value={money(data.summary.billed)} sub={`${data.summary.invoice_count} invoices`} accent="sky" />
             <StatCard label="Treatments done" value={data.summary.treatments_done} accent="violet" />
             <StatCard label="New patients" value={data.summary.new_patients} accent="amber" />
@@ -87,6 +93,20 @@ export default function Reports() {
                   <tr key={d.id}><td className="font-medium">{d.name}</td><td className="text-right">{d.treatments}</td><td className="text-right font-semibold">{money(d.revenue)}</td></tr>
                 ))}</tbody>
               </table>
+            </Card>
+
+            <Card title="Expenses by category" className="lg:col-span-3"
+              action={<Link to="/expenses" className="text-sm font-semibold text-brand-700">All expenses →</Link>}>
+              {data.expensesByCategory.length === 0 ? <Empty title="No expenses in this period" /> : (
+                <table className="table-base">
+                  <thead><tr><th>Category</th><th className="text-right">Entries</th><th className="text-right">Amount</th><th className="text-right">Share</th></tr></thead>
+                  <tbody>{data.expensesByCategory.map((c) => (
+                    <tr key={c.category}><td className="font-medium">{c.category}</td><td className="text-right">{c.count}</td>
+                      <td className="text-right font-semibold">{money(c.amount)}</td>
+                      <td className="text-right text-slate-500">{data.summary.expenses ? ((c.amount / data.summary.expenses) * 100).toFixed(0) : 0}%</td></tr>
+                  ))}</tbody>
+                </table>
+              )}
             </Card>
           </div>
         </>
